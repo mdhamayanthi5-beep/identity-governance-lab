@@ -1,0 +1,90 @@
+version: '3.8'
+
+services:
+  # Keycloak - Identity and Access Management
+  keycloak:
+    image: quay.io/keycloak/keycloak:latest
+    container_name: keycloak
+    environment:
+      KEYCLOAK_ADMIN: admin
+      KEYCLOAK_ADMIN_PASSWORD: admin123
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://postgres:5432/keycloak
+      KC_DB_USERNAME: keycloak
+      KC_DB_PASSWORD: keycloak123
+    ports:
+      - "8080:8080"
+    command: start-dev
+    depends_on:
+      - postgres
+    networks:
+      - identity-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  # PostgreSQL Database for Keycloak
+  postgres:
+    image: postgres:15-alpine
+    container_name: postgres_keycloak
+    environment:
+      POSTGRES_DB: keycloak
+      POSTGRES_USER: keycloak
+      POSTGRES_PASSWORD: keycloak123
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - identity-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U keycloak"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # FreeIPA - Identity Management Platform
+  freeipa:
+    image: freeipa/freeipa-server:fedora-39
+    container_name: freeipa
+    hostname: ipa.example.com
+    environment:
+      IPA_SERVER_INSTALL_OPTS: >
+        --ds-password=dspassword123
+        --admin-password=adminpassword123
+        --realm=EXAMPLE.COM
+        --domain=example.com
+        --setup-dns
+        --allow-zone-overlap
+        -U
+    ports:
+      - "80:80"
+      - "443:443"
+      - "389:389"
+      - "636:636"
+      - "88:88"
+      - "464:464"
+      - "53:53"
+    volumes:
+      - freeipa_data:/data
+    networks:
+      - identity-network
+    sysctls:
+      - net.ipv6.conf.all.disable_ipv6=0
+    cap_add:
+      - SYS_ADMIN
+      - NET_ADMIN
+    healthcheck:
+      test: ["CMD", "curl", "-f", "https://localhost/ipa/ui/"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+volumes:
+  postgres_data:
+  freeipa_data:
+
+networks:
+  identity-network:
+    driver: bridge
